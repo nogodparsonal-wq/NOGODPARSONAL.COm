@@ -7,17 +7,15 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         
         const firebaseConfig = {
             apiKey: "AIzaSyAV4PTJ2VU7uAfDU6hCVjXzBhcYMY-kyXc",
             authDomain: "roman-topup-bd.firebaseapp.com",
-            databaseURL: "https://roman-topup-bd-default-rtdb.firebaseio.com",
             projectId: "roman-topup-bd",
             storageBucket: "roman-topup-bd.firebasestorage.app",
             messagingSenderId: "1022888841536",
             appId: "1:1022888841536:web:abcd061243a3331264eaa5",
-            measurementId: "G-309D1K2G3X"
         };
 
         const app = initializeApp(firebaseConfig);
@@ -28,15 +26,12 @@
         const amount = urlParams.get('amount') || "0";
         const method = "nagad";
 
-        // DOM Elements
         const amountSpan = document.getElementById('display-amount');
         const numberSpan = document.getElementById('display-number');
         const bannerList = document.getElementById('banner-list');
         const trxInput = document.getElementById('trx-input');
         const submitBtn = document.getElementById('submit-btn');
         const orderIdSpan = document.getElementById('order-id');
-        
-        // Success Screen Elements
         const paymentForm = document.getElementById('payment-form');
         const successScreen = document.getElementById('success-screen');
         const countdownDisplay = document.getElementById('countdown-display');
@@ -55,7 +50,7 @@
                         const imgUrl = data[`img${i}`];
                         if(imgUrl) bannerHTML += `<img src="${imgUrl}" class="banner-img" alt="Step ${i}" onerror="this.style.display='none'">`;
                     }
-                    bannerList.innerHTML = bannerHTML || '<p class="text-xs text-gray-400">ব্যানার পাওয়া যায়নি</p>';
+                    bannerList.innerHTML = bannerHTML || '<p class="text-xs text-gray-400">ব্যানার পাওয়া যায়নি</p>';
                 }
             } catch(e) { console.error("Banner Error:", e); }
         };
@@ -72,59 +67,74 @@
             } catch(e) { numberSpan.innerText = '017XXXXXXXX'; }
         };
 
+        // কপি ফাংশন (মোবাইল ফ্রেন্ডলি)
         window.copyNumber = () => {
-            navigator.clipboard.writeText(numberSpan.innerText).then(() => {
-                const toast = document.getElementById('toastMsg');
-                toast.innerText = "📋 নম্বর কপি হয়েছে!";
-                toast.className = "toast-custom show";
-                setTimeout(() => toast.className = "toast-custom", 2500);
-            });
+            const num = numberSpan.innerText;
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(num).then(() => {
+                    showCopyToast();
+                }).catch(() => {
+                    fallbackCopyTextToClipboard(num);
+                });
+            } else {
+                fallbackCopyTextToClipboard(num);
+            }
         };
+
+        function fallbackCopyTextToClipboard(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.top = "0"; textArea.style.left = "0";
+            textArea.style.position = "fixed"; textArea.style.opacity = "0";
+            document.body.appendChild(textArea);
+            textArea.focus(); textArea.select();
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) { showCopyToast(); }
+                else { showToast("❌ কপি করা সম্ভব হয়নি। ম্যানুয়ালি কপি করুন।", true); }
+            } catch (err) { showToast("❌ কপি করা সম্ভব হয়নি।", true); }
+            document.body.removeChild(textArea);
+        }
+
+        function showCopyToast() {
+            const toast = document.getElementById('toastMsg');
+            toast.innerHTML = '<i class="fa-solid fa-check-circle text-green-400 mr-2"></i> নম্বর কপি হয়েছে!';
+            toast.style.background = "#10b981"; // সবুজ রঙ
+            toast.className = "toast-custom show";
+            setTimeout(() => { toast.className = "toast-custom"; }, 2500);
+        }
 
         window.sendPayment = async () => {
             const trx = trxInput.value.trim().toUpperCase();
             if(!trx) return showToast("❌ TrxID লিখুন!", true);
+            if(!orderId) return showToast("❌ অর্ডার আইডি পাওয়া যায়নি!", true);
             
             submitBtn.disabled = true;
             submitBtn.innerHTML = `<span class="loading-spinner"></span> যাচাই হচ্ছে...`;
 
             try {
-                const q = query(collection(db, "orders"), where("transactionId", "==", trx));
-                const snapshot = await getDocs(q);
-                if(!snapshot.empty) {
-                    showToast("⚠️ এই TrxID আগেই ব্যবহার হয়েছে!", true);
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = "Confirm & Submit";
-                    return;
+                const orderRef = doc(db, "orders", orderId);
+                const orderSnap = await getDoc(orderRef);
+                
+                if(!orderSnap.exists()) {
+                    throw new Error("Order not found in database");
                 }
 
-                if(orderId) {
-                    const orderRef = doc(db, "orders", orderId);
-                    await updateDoc(orderRef, {
-                        transactionId: trx,
-                        paymentMethod: method,
-                        paymentStatus: "verified",
-                        status: "processing",
-                        updatedAt: serverTimestamp()
-                    });
-                } else {
-                    await addDoc(collection(db, "payments"), {
-                        trxid: trx,
-                        amount: amount,
-                        method: method,
-                        status: "Pending",
-                        time: serverTimestamp()
-                    });
-                }
+                await updateDoc(orderRef, {
+                    transactionId: trx,
+                    paymentMethod: method,
+                    paymentStatus: "verified",
+                    status: "processing",
+                    updatedAt: serverTimestamp()
+                });
 
-                // Show Success Screen with Countdown
                 paymentForm.classList.add('hidden');
                 successScreen.classList.remove('hidden');
-                startCountdown(300); // 5 minutes
+                startCountdown(300);
 
             } catch (e) {
                 console.error(e);
-                showToast("❌ ত্রুটি হয়েছে! আবার চেষ্টা করুন।", true);
+                showToast("❌ ত্রুটি হয়েছে: " + e.message, true);
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = "Confirm & Submit";
             }
@@ -137,9 +147,7 @@
                 seconds = parseInt(timer % 60, 10);
                 minutes = minutes < 10 ? "0" + minutes : minutes;
                 seconds = seconds < 10 ? "0" + seconds : seconds;
-
                 countdownDisplay.textContent = minutes + ":" + seconds;
-
                 if (--timer < 0) {
                     clearInterval(interval);
                     countdownDisplay.textContent = "00:00";
@@ -150,7 +158,7 @@
 
         const showToast = (msg, isError = false) => {
             const toast = document.getElementById('toastMsg');
-            toast.innerText = msg;
+            toast.innerHTML = msg;
             toast.style.background = isError ? "#ef4444" : "#1e293b";
             toast.className = "toast-custom show";
             setTimeout(() => { toast.className = "toast-custom"; }, 2500);
@@ -161,13 +169,13 @@
         trxInput.addEventListener("input", function() { this.value = this.value.toUpperCase(); });
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,600;14..32,800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
         * { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
         .nagad-gradient { background: linear-gradient(135deg, #F5A623 0%, #d48a1a 100%); }
         .nagad-border { border-color: #F5A623; }
         .nagad-text { color: #F5A623; }
-        
-        .toast-custom { visibility: hidden; min-width: 280px; background: #1e293b; color: white; text-align: center; border-radius: 2rem; padding: 12px 20px; position: fixed; z-index: 1000; bottom: 30px; left: 50%; transform: translateX(-50%) scale(0.9); opacity: 0; transition: all 0.25s ease; font-weight: 600; backdrop-filter: blur(8px); background: rgba(30,41,59,0.95); box-shadow: 0 20px 25px -12px rgba(0,0,0,0.2); }
+        .toast-custom { visibility: hidden; min-width: 280px; color: white; text-align: center; border-radius: 2rem; padding: 14px 20px; position: fixed; z-index: 1000; bottom: 30px; left: 50%; transform: translateX(-50%) scale(0.9); opacity: 0; transition: all 0.25s ease; font-weight: 600; backdrop-filter: blur(8px); box-shadow: 0 20px 25px -12px rgba(0,0,0,0.3); font-size: 15px; display: flex; align-items: center; justify-content: center;}
         .toast-custom.show { visibility: visible; opacity: 1; transform: translateX(-50%) scale(1); }
         .loading-spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: white; animation: spin 0.6s linear infinite; margin-right: 8px; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -182,7 +190,6 @@
 
     <div class="max-w-md w-full">
         <div class="bg-white rounded-3xl shadow-2xl overflow-hidden">
-            <!-- Header -->
             <div class="nagad-gradient p-6 flex justify-between items-center">
                 <div class="flex items-center gap-2">
                     <div class="bg-white/20 backdrop-blur-sm p-2 rounded-xl">
@@ -196,7 +203,6 @@
                 </div>
             </div>
 
-            <!-- Payment Form Area -->
             <div id="payment-form" class="py-6">
                 <div class="px-6 mb-3">
                     <div class="bg-gray-100 rounded-xl p-2 text-center text-xs">
@@ -245,29 +251,25 @@
                 </div>
             </div>
 
-            <!-- Success Screen (Hidden by default) -->
             <div id="success-screen" class="hidden py-10 px-6 text-center">
                 <div class="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
                     <svg class="w-12 h-12 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
                 </div>
-                <h2 class="text-2xl font-black text-gray-800 mb-2">অনুরোধ সফল হয়েছে!</h2>
-                <p class="text-sm text-gray-500 mb-8 leading-relaxed">আপনার পেমেন্ট সফলভাবে জমা হয়েছে। অনুগ্রহ করে অপেক্ষা করুন, <b>৫ মিনিটের</b> মধ্যে আপনার অর্ডার প্রসেস করা হবে।</p>
-                
+                <h2 class="text-2xl font-black text-gray-800 mb-2">অনুরোধ সফল হয়েছে!</h2>
+                <p class="text-sm text-gray-500 mb-8 leading-relaxed">আপনার পেমেন্ট সফলভাবে জমা হয়েছে। অনুগ্রহ করে অপেক্ষা করুন, <b>৫ মিনিটের</b> মধ্যে আপনার অর্ডার প্রসেস করা হবে।</p>
                 <div class="bg-gray-50 rounded-2xl p-4 border border-gray-200">
-                    <p class="text-xs text-gray-500 font-bold uppercase tracking-widest mb-2">অপেক্ষার সময় বাকি</p>
+                    <p class="text-xs text-gray-500 font-bold uppercase tracking-widest mb-2">অপেক্ষার সময় বাকি</p>
                     <div id="countdown-display" class="text-5xl font-black text-gray-800 tabular-nums tracking-tighter">05:00</div>
                 </div>
-
                 <button onclick="window.close()" class="mt-8 text-gray-400 font-bold text-sm hover:text-gray-600 transition-colors">উইন্ডো বন্ধ করুন</button>
             </div>
 
-            <!-- Footer -->
             <div class="bg-gray-50 p-4 text-center border-t">
                 <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">🔒 Secure Payment • ROMAN TOPUP BD</p>
             </div>
         </div>
     </div>
 
-    <div id="toastMsg" class="toast-custom">✨ কপি হয়েছে!</div>
+    <div id="toastMsg" class="toast-custom">✨ কপি হয়েছে!</div>
 </body>
 </html>
