@@ -22,7 +22,7 @@
         const db = getFirestore(app);
 
         const urlParams = new URLSearchParams(window.location.search);
-        const orderId = urlParams.get('orderId') || "Direct Payment";
+        let orderId = urlParams.get('orderId') || null;
         const amount = urlParams.get('amount') || "0";
         const method = "nagad";
 
@@ -37,7 +37,7 @@
         const countdownDisplay = document.getElementById('countdown-display');
 
         amountSpan.innerText = amount;
-        orderIdSpan.innerText = orderId;
+        orderIdSpan.innerText = orderId ? orderId : "Direct Payment";
 
         const loadBanners = async () => {
             try {
@@ -101,7 +101,7 @@
             submitBtn.innerHTML = `<span class="loading-spinner"></span> যাচাই হচ্ছে...`;
 
             try {
-                if(orderId && orderId !== 'Direct Payment') {
+                if(orderId) {
                     const orderRef = doc(db, "orders", orderId);
                     const orderSnap = await getDoc(orderRef);
                     if(orderSnap.exists()) {
@@ -186,7 +186,7 @@
                 <div class="px-6 mb-3">
                     <div class="bg-gray-100 rounded-xl p-2 text-center text-xs flex justify-center items-center gap-1">
                         <span class="text-gray-500 font-bold">অর্ডার আইডি:</span>
-                        <span id="order-id" class="font-mono font-bold text-gray-800">Direct Payment</span>
+                        <span id="order-id" class="font-mono font-bold text-gray-800">লোড হচ্ছে...</span>
                     </div>
                 </div>
 
@@ -251,4 +251,4 @@
 
     <div id="toastMsg" class="toast-custom">✨ কপি হয়েছে!</div>
 </body>
-</html
+</html>
