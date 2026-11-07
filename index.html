@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, doc, getDoc, updateDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         
         const firebaseConfig = {
             apiKey: "AIzaSyAV4PTJ2VU7uAfDU6hCVjXzBhcYMY-kyXc",
@@ -22,9 +22,17 @@
         const db = getFirestore(app);
 
         const urlParams = new URLSearchParams(window.location.search);
-        let orderId = urlParams.get('orderId') || null;
         const amount = urlParams.get('amount') || "0";
-        const method = "nagad";
+        const method = urlParams.get('method') || "nagad";
+        const reqType = urlParams.get('reqType') || "addMoney";
+        const orderId = urlParams.get('orderId') || null;
+        const userId = urlParams.get('userId') || "guest";
+        const userName = urlParams.get('userName') || "Guest User";
+        const userEmail = urlParams.get('userEmail') || "guest@example.com";
+        const offerId = urlParams.get('offerId') || "";
+        const offerName = urlParams.get('offerName') || "";
+        const offerImage = urlParams.get('offerImage') || "";
+        const playerUid = urlParams.get('playerUid') || "";
 
         const amountSpan = document.getElementById('display-amount');
         const numberSpan = document.getElementById('display-number');
@@ -37,7 +45,7 @@
         const countdownDisplay = document.getElementById('countdown-display');
 
         amountSpan.innerText = amount;
-        orderIdSpan.innerText = orderId ? orderId : "Direct Payment";
+        orderIdSpan.innerText = orderId ? orderId.substring(0, 15) + '...' : "Direct Payment";
 
         const loadBanners = async () => {
             try {
@@ -101,25 +109,43 @@
             submitBtn.innerHTML = `<span class="loading-spinner"></span> যাচাই হচ্ছে...`;
 
             try {
-                if(orderId) {
-                    const orderRef = doc(db, "orders", orderId);
-                    const orderSnap = await getDoc(orderRef);
-                    if(orderSnap.exists()) {
-                        await updateDoc(orderRef, {
-                            transactionId: trx, paymentMethod: method, paymentStatus: "verified", status: "processing", updatedAt: serverTimestamp()
-                        });
-                    } else { throw new Error("Order not found"); }
+                if (reqType === 'order' && orderId) {
+                    await setDoc(doc(db, "orders", orderId), {
+                        orderId: orderId,
+                        userId: userId,
+                        userName: userName,
+                        userEmail: userEmail,
+                        offerId: offerId,
+                        offerName: offerName,
+                        offerImage: offerImage,
+                        playerUid: playerUid,
+                        amount: Number(amount),
+                        paymentMethod: method,
+                        transactionId: trx,
+                        status: "processing",
+                        paymentStatus: "verified",
+                        createdAt: serverTimestamp(),
+                        updatedAt: serverTimestamp()
+                    });
                 } else {
                     const reqId = "RTB-ADD-" + Date.now();
                     await setDoc(doc(db, "addMoneyRequests", reqId), {
-                        requestId: reqId, userId: "guest", userName: "Guest User", userEmail: "guest@example.com",
-                        amount: Number(amount), method: method, transactionId: trx, status: "pending", createdAt: serverTimestamp()
+                        requestId: reqId,
+                        userId: userId,
+                        userName: userName,
+                        userEmail: userEmail,
+                        amount: Number(amount),
+                        method: method,
+                        transactionId: trx,
+                        status: "pending",
+                        createdAt: serverTimestamp()
                     });
                 }
 
                 paymentForm.classList.add('hidden');
                 successScreen.classList.remove('hidden');
                 startCountdown(300);
+
             } catch (e) {
                 console.error(e);
                 showToast("❌ ত্রুটি হয়েছে: " + e.message, true);
